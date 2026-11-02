@@ -238,7 +238,7 @@ export const CIRCULATION_TOUR: TourStop[] = [
     title: '1정거장 · 심장 — 몸의 펌프',
     body: '심장이 쿵쾅 뛰며 피를 뿜어냅니다. 박동에 맞춰 화면도 통통 뜁니다.',
     pos: [1.9, 1.9, 2.9],
-    target: [0.25, 1.9, 0.3],
+    target: [0.18, 1.8, 0.35],
     organId: 'heart',
   },
   {

@@ -4,7 +4,8 @@
  * heartbeat animation, keyframed digestion camera tour.
  */
 import * as THREE from 'three';
-import { LAYER_IDS, type LayerId } from '../anatomy/layers';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { LAYER_IDS, layerById, type LayerId } from '../anatomy/layers';
 import { TOURS, type TourId, type TourStop } from '../anatomy/organs';
 import { buildLayer, circulationCurve, gutCurve } from '../anatomy/builders';
 
@@ -86,30 +87,54 @@ export class BodyScene {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Image-based lighting so moist organ surfaces read as 3D, not flat color.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.45;
+    pmrem.dispose();
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    this.scene.add(new THREE.HemisphereLight(0xfff2f4, 0x2a1418, 1.1));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    this.scene.add(new THREE.HemisphereLight(0xfff2f4, 0x2a1418, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 1.35);
     key.position.set(3, 6, 5);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -5;
+    key.shadow.camera.right = 5;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = -5;
+    key.shadow.bias = -0.0005;
     this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x4aa8ff, 0.5);
     rim.position.set(-4, 2, -3);
     this.scene.add(rim);
 
-    // Soft stage disc.
+    // Soft stage disc — catches shadows.
     const disc = new THREE.Mesh(
       new THREE.CircleGeometry(2.4, 40),
-      new THREE.MeshBasicMaterial({ color: 0x2a1418, transparent: true, opacity: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: 0x241418, roughness: 1 }),
     );
     disc.rotation.x = -Math.PI / 2;
     disc.position.y = -3.75;
+    disc.receiveShadow = true;
     this.scene.add(disc);
 
     for (const id of LAYER_IDS) {
       const group = buildLayer(id);
       this.groups.set(id, group);
       this.visible.set(id, true);
-      this.opacityTarget.set(id, id === 'skin' ? 0.35 : 1);
+      this.opacityTarget.set(id, layerById(id).defaultOpacity);
+      group.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+        }
+      });
       this.scene.add(group);
     }
 
@@ -483,7 +508,8 @@ export class BodyScene {
     if (this.heart) {
       const rate = this.circulationPlaying ? 2.6 * this.circulationSpeed : 1.4;
       const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * rate)), 6);
-      const s = 1 + beat * 0.12;
+      const base = (this.heart.userData.baseScale as number | undefined) ?? 1;
+      const s = base * (1 + beat * 0.12);
       this.heart.scale.set(s, s, s);
     }
 
@@ -493,11 +519,13 @@ export class BodyScene {
     }
     const breath = Math.sin(this.breathPhase);
     for (const lung of this.lungs) {
+      const base = (lung.userData.baseScale as [number, number, number] | undefined) ?? [1, 1.35, 1];
       const s = 1 + breath * 0.07;
-      lung.scale.set(0.85 * s, 1.25 * (1 + breath * 0.1), 0.75 * s);
+      lung.scale.set(base[0] * s, base[1] * (1 + breath * 0.1), base[2] * s);
     }
     if (this.diaphragm) {
-      this.diaphragm.position.y = 1.5 + breath * 0.09;
+      const baseY = (this.diaphragm.userData.baseY as number | undefined) ?? 1.5;
+      this.diaphragm.position.y = baseY + breath * 0.09;
     }
 
     // Blood flow.

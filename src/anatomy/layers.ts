@@ -26,7 +26,7 @@ export const LAYERS: LayerInfo[] = [
     nameEn: 'Muscle',
     description: '몸을 움직이는 붉은 근육층',
     color: 0xc0392b,
-    defaultOpacity: 0.85,
+    defaultOpacity: 0.6,
   },
   {
     id: 'skeleton',
