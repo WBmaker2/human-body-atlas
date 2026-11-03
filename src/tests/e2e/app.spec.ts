@@ -79,6 +79,35 @@ test('new organ shortcut opens the bladder KR card', async ({ page }) => {
   await expect(page.getByText('오줌을 모아')).toBeVisible();
 });
 
+test('real organ models finish loading (GLB with procedural fallback)', async ({ page }) => {
+  const canvas = page.locator('#scene');
+  await expect(canvas).toHaveAttribute('data-models-attempted', '14', { timeout: 90000 });
+  await expect(canvas).toHaveAttribute('data-models-loaded', '14', { timeout: 90000 });
+  await expect(page.getByText('실제 장기 모형 14종으로 바뀌었습니다')).toBeVisible();
+});
+
+test('clicking the real heart mesh opens its card (raycast on GLB)', async ({ page }) => {
+  const canvas = page.locator('#scene');
+  await expect(canvas).toHaveAttribute('data-models-loaded', '14', { timeout: 90000 });
+  // Focus the camera on the heart, then deselect so only a real 3D hit reopens.
+  await page.getByRole('button', { name: '심장', exact: true }).click();
+  await page.getByRole('button', { name: '카드 닫기' }).click();
+  await page.waitForTimeout(1800);
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await canvas.click({ position: { x: box!.width / 2, y: box!.height / 2 } });
+  await expect(page.getByRole('heading', { name: /심장/ })).toBeVisible();
+});
+
+test('attribution dialog shows CC BY 4.0 credit', async ({ page }) => {
+  await page.getByRole('button', { name: '출처·라이선스 보기' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('CC BY 4.0').first()).toBeVisible();
+  await expect(dialog.getByText('Human Reference Atlas').first()).toBeVisible();
+  await expect(dialog.getByText('Heart, Male')).toBeVisible();
+});
+
 test('reduced motion is announced and tour still steps', async ({ page, context }) => {
   await context.grantPermissions([]);
   await page.emulateMedia({ reducedMotion: 'reduce' });

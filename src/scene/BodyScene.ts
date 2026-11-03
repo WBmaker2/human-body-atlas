@@ -7,11 +7,14 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { LAYER_IDS, layerById, type LayerId } from '../anatomy/layers';
 import { TOURS, type TourId, type TourStop } from '../anatomy/organs';
+import { MODEL_SOURCES } from '../anatomy/modelCatalog';
 import { buildLayer, circulationCurve, gutCurve } from '../anatomy/builders';
+import { loadOrganModels, type LoadedModel } from './organModels';
 
 export interface SceneCallbacks {
   onSelect: (organId: string | null) => void;
   onTourIndex?: (index: number) => void;
+  onModelsProgress?: (loaded: number, total: number) => void;
 }
 
 function easeInOutCubic(t: number): number {
@@ -77,12 +80,17 @@ export class BodyScene {
 
   private onSelect: (id: string | null) => void;
   private onTourIndex?: (index: number) => void;
+  private onModelsProgress?: (loaded: number, total: number) => void;
   private resizeObserver: ResizeObserver | null = null;
   private disposed = false;
+  private selectedOrganId: string | null = null;
+  private modelsLoaded = 0;
+  private readonly modelsTotal = MODEL_SOURCES.length;
 
   constructor(private canvas: HTMLCanvasElement, cb: SceneCallbacks) {
     this.onSelect = cb.onSelect;
     this.onTourIndex = cb.onTourIndex;
+    this.onModelsProgress = cb.onModelsProgress;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -153,6 +161,75 @@ export class BodyScene {
 
     this.applyOrbit();
     this.loop();
+    // Progressive upgrade: swap procedural organs for real HRA models as
+    // they arrive. Failures keep the procedural fallback — never blank.
+    void this.upgradeOrgans();
+  }
+
+  /* ---------------- real-model upgrade ---------------- */
+
+  private async upgradeOrgans(): Promise<void> {
+    await loadOrganModels(
+      (model) => this.swapOrganModel(model),
+      (p) => {
+        this.canvas.dataset.modelsAttempted = String(p.done);
+      },
+    );
+  }
+
+  private swapOrganModel(model: LoadedModel): void {
+    const group = this.groups.get('organs');
+    if (!group || this.disposed) return;
+    const organId = model.source.organId;
+
+    // Remove synthetic procedural meshes for this organ (diaphragm stays —
+    // no real counterpart ships with the HRA set).
+    const doomed: THREE.Mesh[] = [];
+    group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (mesh.userData.organId === organId && mesh.userData.synthetic === true && mesh.name !== 'diaphragm') {
+        doomed.push(mesh);
+      }
+    });
+    for (const d of doomed) {
+      d.parent?.remove(d);
+      d.geometry.dispose();
+    }
+    // Drop stale named empties (e.g. the procedural heart group shell).
+    if (model.wrapper.name) {
+      const stale = group.getObjectByName(model.wrapper.name);
+      if (stale && stale !== model.wrapper) stale.parent?.remove(stale);
+    }
+
+    // Match current layer opacity instantly so nothing flashes.
+    const target = this.visible.get('organs') ? (this.opacityTarget.get('organs') ?? 1) : 0;
+    model.wrapper.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const m = mesh.material as THREE.MeshStandardMaterial | undefined;
+      if (m && 'opacity' in m) {
+        m.opacity = target;
+        m.transparent = target < 0.999;
+        m.depthWrite = target > 0.6;
+      }
+    });
+    group.add(model.wrapper);
+
+    this.modelsLoaded += 1;
+    this.refreshAnimatedRefs();
+    this.setSelected(this.selectedOrganId);
+    this.onModelsProgress?.(this.modelsLoaded, this.modelsTotal);
+  }
+
+  private refreshAnimatedRefs(): void {
+    const heart = this.scene.getObjectByName('heart');
+    if (heart) this.heart = heart;
+    const lungL = this.scene.getObjectByName('lungL');
+    const lungR = this.scene.getObjectByName('lungR');
+    if (lungL && lungR) this.lungs = [lungL, lungR];
+    const diaphragm = this.scene.getObjectByName('diaphragm');
+    if (diaphragm) this.diaphragm = diaphragm;
   }
 
   /* ---------------- public API ---------------- */
@@ -172,6 +249,7 @@ export class BodyScene {
   }
 
   setSelected(id: string | null): void {
+    this.selectedOrganId = id;
     this.scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;

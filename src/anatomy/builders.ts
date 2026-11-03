@@ -121,6 +121,7 @@ function mesh(
   const m = new THREE.Mesh(geo, material);
   m.position.set(...pos);
   m.userData.layerId = layerId;
+  m.userData.synthetic = true; // procedural fallback — replaced when a real GLB arrives
   if (organId) m.userData.organId = organId;
   return m;
 }

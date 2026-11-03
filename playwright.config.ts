@@ -5,7 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Real organ models (~37 MB GLB + 1.2M tris) are heavy under software WebGL:
+  // fewer parallel browsers and generous timeouts keep the suite reliable.
+  workers: process.env.CI ? 1 : 2,
+  timeout: 150_000,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',

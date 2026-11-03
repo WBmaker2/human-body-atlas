@@ -3,6 +3,7 @@ import { ORGAN_ANCHORS } from '../anatomy/builders';
 import { ORGANS } from '../anatomy/organs';
 import { BodyScene } from '../scene/BodyScene';
 import { AtlasStore } from '../stores/atlasStore';
+import { openAttribution, renderAttribution } from '../ui/Attribution';
 import { renderLayerRail } from '../ui/LayerRail';
 import { renderOrganCard } from '../ui/OrganCard';
 import { renderQuiz } from '../ui/Quiz';
@@ -25,7 +26,7 @@ export class App {
         <aside class="rail" id="rail" aria-label="레이어 조절"></aside>
         <section class="stage" aria-label="3D 인체 장면">
           <div class="canvas-wrap">
-            <canvas id="scene" tabindex="0" aria-label="인체 3D 모형. 한 손가락으로 회전, 두 손가락으로 확대. 장기 선택은 아래 장기 버튼을 이용하세요."></canvas>
+            <canvas id="scene" tabindex="0" data-models-loaded="0" data-models-attempted="0" aria-label="인체 3D 모형. 한 손가락으로 회전, 두 손가락으로 확대. 장기 선택은 아래 장기 버튼을 이용하세요."></canvas>
           </div>
           <p class="caption" id="scene-caption" role="status" aria-live="polite">
             드래그로 돌리고 두 손가락으로 확대하세요. 장기를 클릭하면 설명 카드가 열립니다.
@@ -39,8 +40,11 @@ export class App {
       </main>
       <section class="tourbar" id="tourbar" aria-label="애니메이션과 투어 조절"></section>
       <section class="quiz" id="quiz" hidden aria-label="라벨 퀴즈"></section>
+      <section class="attrib" id="attrib" aria-label="장기 모형 출처"></section>
       <footer class="footer">
         <small>교육용 개념 모형으로 실제 해부 구조와 다를 수 있습니다 · 절차적 자체 모델(저작권 안전) · 소화 순서: 입→식도→위→소장→대장</small>
+        <br />
+        <small>장기 3D: HuBMAP HRA (CC BY 4.0) <button type="button" id="attrib-open" class="linklike">출처·라이선스 보기</button></small>
       </footer>
     `;
 
@@ -49,8 +53,9 @@ export class App {
     const panel = this.root.querySelector<HTMLElement>('#organ-panel');
     const tourbar = this.root.querySelector<HTMLElement>('#tourbar');
     const quiz = this.root.querySelector<HTMLElement>('#quiz');
+    const attrib = this.root.querySelector<HTMLElement>('#attrib');
     const caption = this.root.querySelector<HTMLElement>('#scene-caption');
-    if (!canvas || !rail || !panel || !tourbar || !quiz || !caption) return;
+    if (!canvas || !rail || !panel || !tourbar || !quiz || !caption || !attrib) return;
 
     this.scene = new BodyScene(canvas, {
       onSelect: (id) => {
@@ -67,12 +72,24 @@ export class App {
         this.store.setTour(playing, index);
         if (caption) caption.textContent = `투어 ${index + 1}정거장으로 이동했습니다.`;
       },
+      onModelsProgress: (loaded, total) => {
+        canvas.dataset.modelsLoaded = String(loaded);
+        if (!caption) return;
+        if (loaded < total) {
+          caption.textContent = `실제 장기 모형을 불러오는 중입니다 (${loaded}/${total})…`;
+        } else {
+          caption.textContent = '실제 장기 모형 14종으로 바뀌었습니다. 드래그로 돌리고 두 손가락으로 확대하세요.';
+        }
+      },
     });
 
     renderLayerRail(rail, this.store, this.scene);
     renderOrganCard(panel, this.store);
     renderTourBar(tourbar, this.store, this.scene);
     renderQuiz(quiz, this.store);
+    renderAttribution(attrib);
+
+    this.root.querySelector('#attrib-open')?.addEventListener('click', () => openAttribution());
 
     // Organ quick buttons — keyboard/precision fallback + gentle camera focus.
     this.root.querySelector('.organ-quick')?.addEventListener('click', (e) => {

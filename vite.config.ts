@@ -29,6 +29,18 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        // Organ GLBs (up to ~11 MB each) stay out of the install precache and
+        // are cached on first use instead, so installation stays light.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith('.glb'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'organ-models',
+              expiration: { maxEntries: 20, maxAgeSeconds: 30 * 24 * 3600 },
+            },
+          },
+        ],
       },
       devOptions: { enabled: false },
     }),
